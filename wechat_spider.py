@@ -12,6 +12,9 @@ from selenium.webdriver.common.by import By
 import sys
 import pickle
 import requests
+import time
+from selenium.webdriver.common.keys import Keys
+
 
 
 class contain_something(object):
@@ -33,12 +36,13 @@ class contain_something(object):
 
 
 class WechatSpider:
-    def __init__(self):
+    def __init__(self, cookie_file_path):
         firefoxProfile = FirefoxProfile()
         # firefoxProfile.set_preference('permissions.default.stylesheet', 2)
         firefoxProfile.set_preference(
             'dom.ipc.plugins.enabled.libflashplayer.so', 'false')
         firefoxProfile.set_preference('permissions.default.image', 2)
+        self.cookie_file_path=cookie_file_path
         self.driver = webdriver.Firefox(firefoxProfile)
         self.driver.set_page_load_timeout(30)
         self.driver.implicitly_wait(5)
@@ -55,26 +59,29 @@ class WechatSpider:
     def login(self):
         self.login_from_cookie()
         try:
-            driver.find_element_by_class_name('new-header-login.unlogin')
-            login_by_user()
-            login_from_cookie(driver)
+            self.driver.get('http://www.newrank.cn/')
+            self.driver.find_element_by_class_name('new-header-login.unlogin')
+            self.login_by_user()
+            self.login_from_cookie()
         except Exception as e:
             pass
 
     def login_by_user(self):
+        print('User login')
         firefoxProfile = FirefoxProfile()
         driver2 = webdriver.Firefox(firefoxProfile)
         driver2.get('http://www.newrank.cn/')
         driver2.find_element_by_class_name('new-header-login.unlogin').click()
         print('请在页面中登录')
-        raw_input('Input Enter to continue')
-        pickle.dump(driver2.get_cookies(), open('./cookies.data', 'wb'))
+        input('Input Enter to continue')
+        pickle.dump(driver2.get_cookies(), open(self.cookie_file_path, 'wb'))
         driver2.quit()
 
     def login_from_cookie(self):
         try:
-            cookie = pickle.load(open('./cookies.data', 'rb'))
+            cookie = pickle.load(open(self.cookie_file_path, 'rb'))
         except:
+            print('Missing cookie file')
             return
         self.driver.get('http://www.newrank.cn/')
         for cc in cookie:
@@ -87,6 +94,36 @@ class WechatSpider:
                 print(cc)
                 print('i')
         self.driver.get('http://www.newrank.cn/')
+
+    def get_account_id_from_name(self, wechat_name):
+        self.driver.get('http://www.newrank.cn/')
+        locator = (By.XPATH, '//*[@id="txt_account"]')
+        try:
+            WebDriverWait(self.driver, 20,
+                          0.5).until(EC.presence_of_element_located(locator))
+            element = self.driver.find_element_by_xpath(
+                '//*[@id="txt_account"]')
+        except Exception as e:
+            print('Error')
+            print(e)
+            print('Not find id "txt_account"')
+            return None
+        element.clear()
+        element.send_keys(wechat_name)
+        time.sleep(1)
+        element.send_keys(Keys.RETURN)
+        locator = (By.XPATH, '//ul[@id="result_list"]/li')
+        try:
+            WebDriverWait(self.driver, 20, 0.5).until(EC.presence_of_element_located(locator))
+            element = self.driver.find_element_by_xpath('//ul[@id="result_list"]/li')
+        except Exception as e:
+            print('Error')
+            print(e)
+            print('Not find class "result li"')
+        wechat_id=element.get_attribute('data-account')
+        return wechat_id
+
+
 
     def get_articles(self, wechat_id):
         print('Crawling %s' % wechat_id)
@@ -105,34 +142,41 @@ class WechatSpider:
                           0.5).until(EC.presence_of_element_located(locator))
             elements = self.driver.find_elements_by_xpath(
                 '//*[@id="info_detail_article_lastest"]//li')
-            article_list = []
-            for e in elements:
-                article = dict()
-                article['title'] = e.find_element_by_class_name(
-                    'ellipsis').get_attribute('title')
-                article['href'] = e.find_element_by_class_name(
-                    'ellipsis').get_attribute('href')
-                article['short_text'] = e.find_element_by_class_name(
-                    'article-text').find_element_by_tag_name(
-                        'a').get_attribute('title')
-                article['date'] = e.find_element_by_class_name(
-                    'info-detail-article-date').text
-                article['read_count'] = e.find_element_by_class_name(
-                    'read-count').text
-                article['like_count'] = e.find_element_by_class_name(
-                    'links-count').text
-                article['position'] = e.find_element_by_class_name(
-                    'tj').find_elements_by_tag_name('span')[1].text
-                article['content'] = self.get_content(article['href'])
-                article_list.append(article)
-            return article_list
         except Exception as e:
             print('Error')
             print(e)
-            with open('./fail_ids_for_article_urls.data', 'a') as fout:
-                fout.write('%s\n' % wechat_id)
             print('Not find id "info_detail_article_lastest" when crawl %s' %
                   wechat_id)
+            return []
+
+        article_list = []
+        for e in elements:
+            article = dict()
+            article['title'] = e.find_element_by_class_name(
+                'ellipsis').get_attribute('title')
+            article['href'] = e.find_element_by_class_name(
+                'ellipsis').get_attribute('href')
+            article['short_text'] = e.find_element_by_class_name(
+                'article-text').find_element_by_tag_name(
+                    'a').get_attribute('title')
+            article['date'] = e.find_element_by_class_name(
+                'info-detail-article-date').text
+            article['read_count'] = e.find_element_by_class_name(
+                'read-count').text
+            article['like_count'] = e.find_element_by_class_name(
+                'links-count').text
+            article['position'] = e.find_element_by_class_name(
+                'tj').find_elements_by_tag_name('span')[1].text
+
+            content=self.get_content(article['href'])
+
+            if content is None:
+                print('continue')
+                continue
+            article['content'] = content
+            article_list.append(article)
+        return article_list
+
 
     def get_account_info(self, wechat_id):
         print('Crawling %s' % wechat_id)
@@ -185,6 +229,7 @@ class WechatSpider:
     def get_content(self, url):
         try:
             self.content_driver.get(url)
+            time.sleep(1)
         except:
             print(url)
             print('!!!!!!!!!!!!!Cannot get web page!!!!!!!!')
@@ -199,6 +244,7 @@ class WechatSpider:
             if page_content == None:
                 print('Not find page-content')
                 print(url)
+                return None
             page_content = page_content.xpath('.//*[@id="js_content"]')[0]
             p = page_content.xpath('.//p | .//img')
             content = []
@@ -217,9 +263,7 @@ class WechatSpider:
 
 
 if __name__ == '__main__':
-    wechat_spider = WechatSpider()
-    info = wechat_spider.get_account_info('HIT_SCIR')
-    articles = wechat_spider.get_articles('HIT_SCIR')
-    print(info)
-    for a in articles:
-        print(a)
+    wechat_spider = WechatSpider('./data/cookies.data')
+    print(wechat_spider.get_account_id_from_name('爱儿康'))
+    print('\n'*10)
+

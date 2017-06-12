@@ -93,7 +93,10 @@ class WechatSpider:
                 print(e)
                 print(cc)
                 print('i')
-        self.driver.get('http://www.newrank.cn/')
+        try:
+            self.driver.get('http://www.newrank.cn/')
+        except:
+            pass
 
     def get_account_id_from_name(self, wechat_name):
         self.driver.get('http://www.newrank.cn/')
